@@ -4,7 +4,7 @@ A client-side tool for reconciling custodian/fund-admin vendor holdings files ag
 
 **[Live demo →](https://etf-reconciliation-tool.vercel.app)**
 
-![screenshot](https://github.com/user-attachments/assets/placeholder)
+![Holdings Reconciliation Tool screenshot](app/holdings-screenshot.png)
 
 ---
 
