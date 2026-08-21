@@ -296,7 +296,6 @@ function Th({
   sortable?: boolean;
   sortDir?: "asc" | "desc" | null;
   onSort?: () => void;
-  colSpan?: number;
 }) {
   return (
     <th

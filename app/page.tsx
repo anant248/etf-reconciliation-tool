@@ -19,9 +19,15 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<ReconciliationResult | null>(null);
 
+  function resetState() {
+    setResult(null);
+    setStatus("idle");
+    setError(null);
+  }
+
   async function handleVendorFile(f: File) {
     setVendorFile(f);
-    setResult(null);
+    resetState();
     try {
       const parsed = await parseCSVFile(f);
       const detected = detectKeyColumn(parsed.headers);
@@ -32,7 +38,7 @@ export default function Home() {
 
   async function handleInternalFile(f: File) {
     setInternalFile(f);
-    setResult(null);
+    resetState();
   }
 
   async function handleLoadSample() {
@@ -44,10 +50,8 @@ export default function Home() {
         parseCSVFromURL("/sample/vendor_holdings.csv"),
         parseCSVFromURL("/sample/internal_record.csv"),
       ]);
-      const vFile = new File([""], "vendor_holdings.csv");
-      const iFile = new File([""], "internal_record.csv");
-      setVendorFile(vFile);
-      setInternalFile(iFile);
+      setVendorFile(new File([""], "vendor_holdings.csv"));
+      setInternalFile(new File([""], "internal_record.csv"));
       setAvailableColumns(v.headers);
       const detectedKey = detectKeyColumn(v.headers);
       setKeyColumn(detectedKey);
@@ -70,12 +74,27 @@ export default function Home() {
         parseCSVFile(vendorFile),
         parseCSVFile(internalFile),
       ]);
+
+      // Validate rows
+      if (v.rows.length === 0) throw new Error("Vendor file has no data rows — check the file is not empty.");
+      if (i.rows.length === 0) throw new Error("Internal file has no data rows — check the file is not empty.");
+
+      // Validate key column exists in both
       if (!v.headers.includes(keyColumn)) {
-        throw new Error(`Key column "${keyColumn}" not found in vendor file. Available: ${v.headers.join(", ")}`);
+        throw new Error(`Key column "${keyColumn}" not found in vendor file. Columns: ${v.headers.join(", ")}`);
       }
       if (!i.headers.includes(keyColumn)) {
-        throw new Error(`Key column "${keyColumn}" not found in internal file. Available: ${i.headers.join(", ")}`);
+        throw new Error(`Key column "${keyColumn}" not found in internal file. Columns: ${i.headers.join(", ")}`);
       }
+
+      // Warn if no shared comparison columns
+      const sharedCols = v.headers.filter((c) => c !== keyColumn && i.headers.includes(c));
+      if (sharedCols.length === 0) {
+        throw new Error(
+          `No shared columns found beyond "${keyColumn}". The files appear to have different schemas — nothing to compare.`
+        );
+      }
+
       const r = reconcile(v.rows, i.rows, keyColumn, vendorFile.name, internalFile.name);
       setResult(r);
       setStatus("done");
@@ -115,14 +134,14 @@ export default function Home() {
         </div>
       </header>
 
-      {/* File upload + key column row */}
+      {/* File upload */}
       <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 mb-6">
         <FileUploadZone
           label="Vendor File"
           description="Custodian or fund-admin holdings report"
           file={vendorFile}
           onFile={handleVendorFile}
-          onClear={() => { setVendorFile(null); setResult(null); }}
+          onClear={() => { setVendorFile(null); resetState(); }}
           disabled={status === "loading"}
         />
         <FileUploadZone
@@ -130,12 +149,12 @@ export default function Home() {
           description="Internal book of record / shadow NAV"
           file={internalFile}
           onFile={handleInternalFile}
-          onClear={() => { setInternalFile(null); setResult(null); }}
+          onClear={() => { setInternalFile(null); resetState(); }}
           disabled={status === "loading"}
         />
       </div>
 
-      {/* Key column + reconcile */}
+      {/* Key column + reconcile button — only shows when files loaded but no result yet */}
       {bothLoaded && status !== "done" && (
         <div className="mb-6 flex items-center gap-4 flex-wrap">
           <div className="flex items-center gap-2">
@@ -185,7 +204,7 @@ export default function Home() {
       )}
 
       {/* Loading */}
-      {status === "loading" && !result && (
+      {status === "loading" && (
         <div className="flex items-center justify-center py-24 gap-3 text-[#9a9a9a]">
           <Spinner />
           <span className="text-sm">Parsing and reconciling…</span>
