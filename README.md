@@ -1,36 +1,79 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# ETF Holdings Reconciliation Tool
 
-## Getting Started
+A client-side tool for reconciling custodian/fund-admin vendor holdings files against an internal book of record. Built as a demonstration of ETF fund-operations tooling patterns.
 
-First, run the development server:
+**[Live demo →](https://etf-reconciliation-tool.vercel.app)**
+
+![screenshot](https://github.com/user-attachments/assets/placeholder)
+
+---
+
+## What it does
+
+ETF fund administrators receive daily holdings files from custodians and pricing vendors. Reconciling those files against the internal book of record is one of the most common and error-prone tasks in fund ops — typically done by hand in Excel. This tool automates that comparison.
+
+Given two CSV files (vendor and internal), it:
+
+1. **Matches** rows on a configurable key column (auto-detects CUSIP, ISIN, Ticker)
+2. **Classifies** every position into one of three buckets:
+   - **Matched** — both files agree on all compared fields (within a numeric tolerance)
+   - **Mismatched** — key exists in both files but one or more values differ; shows per-field delta
+   - **Unmatched** — key exists in only one file; flagged by which side it's missing from
+3. **Surfaces exceptions** in a sortable table — mismatches sorted by delta magnitude by default
+4. **Exports** a clean exceptions CSV for escalation or audit trail
+
+---
+
+## Sample data
+
+Click **Load Sample Data** to run an instant demo. The bundled files simulate a 20-position ETF holdings reconciliation with deliberate discrepancies:
+
+| Type | Positions | Detail |
+|---|---|---|
+| Matched | 14 | All fields agree across both files |
+| Mismatched | 4 | GOOGL (shares), NVDA (price), JPM (shares), KO (price) |
+| Unmatched | 4 | BRK.B + BMY vendor-only · ABT + HD internal-only |
+
+---
+
+## Tech
+
+- **Next.js 16** (App Router) + TypeScript
+- **Tailwind CSS v4** — data-dense ops-tool aesthetic
+- **Papaparse** — client-side CSV parsing
+- No backend, no auth, no persistence — everything runs in the browser
+
+---
+
+## Running locally
 
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+---
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Design decisions worth noting
 
-## Learn More
+**Numeric tolerance.** Floating-point representation means two files can report the same value with a sub-cent difference. The reconciler treats numeric diffs ≤ $0.01 as matched to avoid false positives.
 
-To learn more about Next.js, take a look at the following resources:
+**Currency formatting heuristic.** Values are formatted as USD only if they carry an explicit `$` prefix or have exactly 2 decimal places (market values, prices). Bare integers like share counts render as plain numbers — `8,000` not `$8,000.00`.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+**Key column auto-detection.** On file upload, the tool scans headers for CUSIP → ISIN → Ticker → ID in that order and pre-selects the best match. The user can override via dropdown.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+**Error handling.** The tool validates both files before reconciling: checks for data rows, verifies the key column exists in both files, and confirms there are shared comparison columns — each with an actionable error message.
 
-## Deploy on Vercel
+---
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Production architecture note
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+This is a client-side demo scoped for shareability. At ETF-issuer scale, this pattern would look different:
+
+- An ingestion service (Python or Go) pulling vendor files from SFTP on a schedule
+- Normalized rows written to Postgres with provenance tracking (filename, ingestion timestamp, checksum)
+- Reconciliation running as a queued job (SQS + Lambda or a Celery worker) rather than in the browser
+- Exceptions surfaced through a persistent review queue with full audit trail — who resolved each exception, when, and what the resolution was
+- Retry logic, dead-letter queues, and alerting for failed ingestions
